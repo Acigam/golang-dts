@@ -4,7 +4,7 @@ import (
 	"final-project-acgm/database"
 	"final-project-acgm/models"
 	"net/http"
-	"strconv"
+	"time"
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
@@ -100,34 +100,63 @@ func LockerRentList(c *gin.Context) {
 
 func LockerRentFinish(c *gin.Context) {
 	db := database.GetDB()
-	contentType := c.GetHeader("Content-Type")
-	_, _ = db, contentType
-	Locker := models.Locker{}
 
-	lockerId, _ := strconv.Atoi(c.Param("lockerId"))
-	Locker.ID = uint(lockerId)
+	locker_rent_id := c.Param("lockerRentId")
 
-	if contentType == "application/json" {
-		c.ShouldBindJSON(&Locker)
-	} else {
-		c.ShouldBind(&Locker)
-	}
-
-	err := db.Debug().Model(&Locker).Where("id = ?", lockerId).Updates(models.Locker{
-		Name:   Locker.Name,
-		Status: Locker.Status,
-		Price:  Locker.Price,
-	}).Error
-
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Bad Request",
-			"message": err.Error(),
+	var lockerRent models.LockerRent
+	if err := db.Where("id = ?", locker_rent_id).First(&lockerRent).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "LockerRent not found",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, Locker)
+	var lockerRentDetails []models.LockerRentDetail
+	if err := db.Where("locker_rent_id = ?", locker_rent_id).Find(&lockerRentDetails).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Could not fetch LockerRentDetails",
+		})
+		return
+	}
+
+	for _, detail := range lockerRentDetails {
+		if detail.ReturnStatus == "complete" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "LockerRent already finished",
+			})
+			return
+		}
+	}
+
+	tx := db.Begin()
+
+	for _, detail := range lockerRentDetails {
+		detail.ReturnStatus = "complete"
+		if err := tx.Debug().Save(&detail).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Could not update LockerRentDetails",
+			})
+			return
+		}
+	}
+
+	now := time.Now()
+	lockerRent.ReturnTime = &now
+	if err := tx.Debug().Save(&lockerRent).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Could not update LockerRent",
+		})
+		return
+	}
+
+	tx.Commit()
+
+	c.JSON(http.StatusOK, gin.H{
+		"locker_rent": lockerRent,
+	})
+
 }
 
 func LockerRentCancel(c *gin.Context) {
