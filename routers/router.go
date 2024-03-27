@@ -32,9 +32,10 @@ func StartApp() *gin.Engine {
 	lockerRentRouter := apiRouter.Group("/locker-rents")
 	{
 		lockerRentRouter.Use(middlewares.Authentication())
-		lockerRentRouter.POST("", controllers.LockerRentCreate)               // Create a new locker rent
-		lockerRentRouter.GET("", controllers.LockerRentList)                  // Get all locker rents
-		lockerRentRouter.POST("/:lockerRentId", controllers.LockerRentFinish) // Finish a locker rent
+		lockerRentRouter.POST("", controllers.LockerRentCreate)                      // Create a new locker rent
+		lockerRentRouter.GET("", controllers.LockerRentList)                         // Get all locker rents
+		lockerRentRouter.POST("/:lockerRentId/finish", controllers.LockerRentFinish) // Finish a locker rent
+		lockerRentRouter.POST("/:lockerRentId/cancel", controllers.LockerRentCancel) // Cancel a locker rent
 	}
 
 	return r

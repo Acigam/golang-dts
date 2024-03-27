@@ -111,6 +111,14 @@ func LockerRentFinish(c *gin.Context) {
 		return
 	}
 
+	userData := c.MustGet("userData").(jwt.MapClaims)
+	if lockerRent.UserID != uint(userData["id"].(float64)) {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "Forbidden",
+		})
+		return
+	}
+
 	var lockerRentDetails []models.LockerRentDetail
 	if err := db.Where("locker_rent_id = ?", locker_rent_id).Find(&lockerRentDetails).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -160,5 +168,59 @@ func LockerRentFinish(c *gin.Context) {
 }
 
 func LockerRentCancel(c *gin.Context) {
+	db := database.GetDB()
 
+	locker_rent_id := c.Param("lockerRentId")
+
+	var lockerRent models.LockerRent
+	if err := db.Where("id = ?", locker_rent_id).First(&lockerRent).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "LockerRent not found",
+		})
+		return
+	}
+
+	userData := c.MustGet("userData").(jwt.MapClaims)
+	if lockerRent.UserID != uint(userData["id"].(float64)) {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "Forbidden",
+		})
+		return
+	}
+
+	var lockerRentDetails []models.LockerRentDetail
+	if err := db.Where("locker_rent_id = ?", locker_rent_id).Find(&lockerRentDetails).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Could not fetch LockerRentDetails",
+		})
+		return
+	}
+
+	for _, detail := range lockerRentDetails {
+		if detail.ReturnStatus == "complete" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "LockerRent already finished",
+			})
+			return
+		}
+	}
+
+	tx := db.Begin()
+
+	for _, detail := range lockerRentDetails {
+		detail.ReturnStatus = "not available"
+		if err := tx.Debug().Save(&detail).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Could not update LockerRentDetails",
+			})
+			return
+		}
+	}
+
+	tx.Commit()
+
+	c.JSON(http.StatusOK, gin.H{
+		"locker_rent": lockerRent,
+	})
 }
